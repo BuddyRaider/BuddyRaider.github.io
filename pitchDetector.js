@@ -75,7 +75,7 @@ startBtn.addEventListener('click', async () => {
                 noteDisplay.innerText = "Silence or Noise";
             }
 
-            vector.delete(); // Clean up WASM memory
+            // vector.delete(); // Clean up WASM memory
         };
 
         isRunning = true;
