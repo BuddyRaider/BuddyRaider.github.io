@@ -4,9 +4,9 @@
 		<meta charset="UTF-8">
 		<meta http-equiv="X-UA-Compatible" content="IE=edge">
 		<meta name="viewport" content="width=device-width, initial-scale=1.0">
-		<title>BuddyRaider</title>
+		<title>BuddyRaider's Misc. Web Tools</title>
 		<!--<link rel="stylesheet" href="style.css">-->
-		<style>
+		<!--<style>
 			body {
 				margin: 0px;
 				display: flex;
@@ -86,39 +86,10 @@
 				font-size: 2.5vmin;
 				/*overflow-wrap: anywhere;*/
 			}
-		</style>
+		</style>-->
 	</head>
 	<body>
-		<div id="nav">BuddyRaider</div>
-		<div id="main">
-			<div id="col1">
-			</div>
-			<div id="col2">
-			</div>
-		</div>
-		<div id="overlay1">
-			<!-- use this later -->
-		</div>
-		<script src="/socket.io/socket.io.js"></script>
-		<script>
-			function toggleOverlay(num=0, b=false, e1="", e2="", e3="", e4="") {
-				const allOverlays = ["overlay1", "overlay2", "overlay3"];
-				var id = allOverlays[num];
-				var el = document.getElementById(id);
-				var el1 = el.querySelector("#extra1");
-				var el2 = el.querySelector("#extra2");
-				var el3 = el.querySelector("#extra3");
-				var el4 = el.querySelector("#extra4");
-				if (b) {
-					el.style.display = "block";
-					if (el1) el1.innerHTML = e1;
-					if (el2) el2.innerHTML = e2;
-					if (el3) el3.innerHTML = e3;
-					if (el4) el4.innerHTML = e4;
-				} else {
-					el.style.display = "none";
-				}
-			}
-		</script>
+		<a href="/GPS.html">GPS Speedometer</a>
+		<a href="/pitchDetector.html">Realtime Pitch Detector</a>
 	</body>
 </html>
