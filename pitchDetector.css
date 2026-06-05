@@ -1,0 +1,22 @@
+body {
+    font-family: sans-serif;
+    text-align: center;
+    padding: 50px;
+}
+
+#pitch-display {
+    font-size: 3em;
+    font-weight: bold;
+    color: #333;
+}
+
+#note-display {
+    font-size: 1.5em;
+    color: #666;
+}
+
+button {
+    padding: 10px 20px;
+    font-size: 1.2em;
+    cursor: pointer;
+}
