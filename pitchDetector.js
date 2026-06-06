@@ -28,12 +28,12 @@ startBtn.addEventListener('click', async () => {
         // 2. Setup Audio Context
         audioContext = new (window.AudioContext || window.webkitAudioContext)();
         const sampleRate = audioContext.sampleRate;
-        const bufferSize = 4096; // increase the buffer for potentially better results.
-        const hopSize = bufferSize / 2;
+        const bufferSize = 8192; // increase the buffer for potentially better results.
+        const hopSize = bufferSize;
 
         // 3. Create Pitch Detector FROM THE INSTANCE
         // Syntax: new instance.Pitch(method, bufferSize, hopSize, sampleRate)
-        aubioPitch = new aubioInstance.Pitch("yinfft", bufferSize, hopSize, sampleRate);
+        aubioPitch = new aubioInstance.Pitch("yin", bufferSize, hopSize, sampleRate);
         // aubioPitch.set_tolerance(0.08);
 
         // 4. Get Microphone Access
@@ -65,6 +65,18 @@ startBtn.addEventListener('click', async () => {
 
             // Pass the Float32Array directly to .do()
             const frequency = aubioPitch.do(slice);
+
+            let confidence = 0;
+            if (aubioPitch.getConfidence) {
+                confidence = aubioPitch.getConfidence();
+            }
+
+            if (confidence < 0.8) {
+                // Reject low-confidence detections (often wrong octaves)
+                if (frequency > 0) {
+                    return;
+                }
+            }
 
             if (frequency > 0) {
                 pitchDisplay.innerText = frequency.toFixed(2) + " Hz";
