@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Decibel Meter</title>
+    <style>
+        :root {
+            --bg-color: #1a1a1a;
+            --text-color: #ffffff;
+            --accent-color: #00ff88;
+            --input-bg: #333;
+            --border-color: #444;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: var(--bg-color);
+            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+            color: var(--text-color);
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 2rem;
+            font-weight: 300;
+            letter-spacing: 2px;
+            text-align: center;
+        }
+
+        .meter-container {
+            background: #2a2a2a;
+            padding: 3rem;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            text-align: center;
+            min-width: 320px;
+        }
+
+        #db-display {
+            font-size: 6rem;
+            font-weight: bold;
+            font-variant-numeric: tabular-nums;
+            color: var(--accent-color);
+            margin: 1rem 0;
+            text-shadow: 0 0 20px rgba(0, 255, 136, 0.3);
+        }
+
+        .unit {
+            font-size: 1.5rem;
+            color: #888;
+            vertical-align: super;
+        }
+
+        .mode-label {
+            font-size: 0.9rem;
+            color: #666;
+            margin-bottom: 20px;
+            display: block;
+            height: 1.2em;
+        }
+
+        #start-btn {
+            background-color: var(--accent-color);
+            color: #000;
+            border: none;
+            padding: 15px 40px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin-top: 10px;
+            width: 100%;
+        }
+
+        #start-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 15px rgba(0, 255, 136, 0.6);
+        }
+
+        #start-btn.listening {
+            background-color: #ff4444;
+            color: white;
+            box-shadow: 0 0 15px rgba(255, 68, 68, 0.4);
+        }
+
+        .calibration-section {
+            margin-top: 25px;
+            padding-top: 20px;
+            border-top: 1px solid var(--border-color);
+            text-align: left;
+        }
+
+        .calibration-section label {
+            display: block;
+            font-size: 0.85rem;
+            color: #aaa;
+            margin-bottom: 8px;
+        }
+
+        .calibration-section input {
+            width: 100%;
+            padding: 10px;
+            background: var(--input-bg);
+            border: 1px solid var(--border-color);
+            color: white;
+            border-radius: 6px;
+            font-size: 1rem;
+            box-sizing: border-box;
+            text-align: center;
+        }
+
+        .calibration-section input:focus {
+            outline: none;
+            border-color: var(--accent-color);
+        }
+
+        .hint {
+            font-size: 0.75rem;
+            color: #555;
+            margin-top: 8px;
+            line-height: 1.4;
+        }
+
+        .status {
+            margin-top: 15px;
+            font-size: 0.9rem;
+            color: #666;
+            height: 1.2em;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Decibel Meter</h1>
+
+    <div class="meter-container">
+        <div id="db-display">--<span class="unit">dB</span></div>
+        <span class="mode-label" id="mode-label">Relative Mode (dBFS)</span>
+
+        <div class="status" id="status-text">Ready to start</div>
+        <button id="start-btn">Start Microphone</button>
+
+        <div class="calibration-section">
+            <label for="calibration-offset">Calibration Offset (dB)</label>
+            <input type="number" id="calibration-offset" value="0" step="0.1" placeholder="0">
+            <div class="hint">
+                Default is <strong>0</strong> (Relative).<br>
+                To calibrate: Enter the difference between a known source and this reading.
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let audioContext = null;
+        let analyser = null;
+        let microphoneStream = null;
+        let animationId = null;
+        let isListening = false;
+
+        // Smoothing Configuration
+        let rawDb = -60;
+        let smoothedDb = -60;
+        const SMOOTHING_FACTOR = 0.05; // Heavy smoothing for stable reading
+
+        // Throttling Configuration
+        let lastUpdateTime = 0;
+        const UPDATE_INTERVAL = 100; // Update text every 100ms
+
+        const startBtn = document.getElementById("start-btn");
+        const dbDisplay = document.getElementById("db-display");
+        const modeLabel = document.getElementById("mode-label");
+        const statusText = document.getElementById("status-text");
+        const offsetInput = document.getElementById("calibration-offset");
+
+        // Update label when offset changes
+        offsetInput.addEventListener("input", () => {
+            const offset = parseFloat(offsetInput.value) || 0;
+            if (offset !== 0) {
+                modeLabel.textContent = "Calibrated Mode (Est. dB SPL)";
+                modeLabel.style.color = "#00ff88";
+            } else {
+                modeLabel.textContent = "Relative Mode (dBFS)";
+                modeLabel.style.color = "#666";
+            }
+        });
+
+        startBtn.addEventListener("click", async () => {
+            if (isListening) {
+                stopMeter();
+            } else {
+                await startMeter();
+            }
+        });
+
+        async function startMeter() {
+            try {
+                microphoneStream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        echoCancellation: false,
+                        noiseSuppression: false,
+                        autoGainControl: false
+                    }
+                });
+
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 2048*16;
+
+                const source = audioContext.createMediaStreamSource(microphoneStream);
+                source.connect(analyser);
+
+                isListening = true;
+                startBtn.textContent = "Stop Microphone";
+                startBtn.classList.add("listening");
+                statusText.textContent = "Listening...";
+                smoothedDb = -60;
+                rawDb = -60;
+
+                // Trigger label update on start
+                offsetInput.dispatchEvent(new Event("input"));
+
+                updateLoop();
+
+            } catch (err) {
+                statusText.textContent = "Error: " + err.message;
+                if (err.name === "NotAllowedError") {
+                    statusText.textContent = "Error: Microphone access denied.";
+                }
+            }
+        }
+
+        function stopMeter() {
+            if (microphoneStream) microphoneStream.getTracks().forEach(track => track.stop());
+            if (audioContext) audioContext.close();
+            if (animationId) cancelAnimationFrame(animationId);
+
+            isListening = false;
+            startBtn.textContent = "Start Microphone";
+            startBtn.classList.remove("listening");
+            dbDisplay.innerHTML = "--<span class="unit">dB</span>";
+            statusText.textContent = "Stopped";
+        }
+
+        function updateLoop(currentTime) {
+            if (!isListening) return;
+
+            // 1. Calculate Raw dB (Runs at 60+ FPS)
+            const bufferLength = analyser.fftSize;
+            const dataArray = new Float32Array(bufferLength);
+            analyser.getFloatTimeDomainData(dataArray);
+
+            let sumSquares = 0;
+            for (let i = 0; i < bufferLength; i++) {
+                sumSquares += dataArray[i] * dataArray[i];
+            }
+            const rms = Math.sqrt(sumSquares / bufferLength);
+
+            let currentDb = 0;
+            if (rms > 0) {
+                currentDb = 20 * Math.log10(rms);
+            }
+            rawDb = Math.max(-100, Math.min(0, currentDb));
+
+            // 2. Apply Smoothing (Runs at 60+ FPS)
+            smoothedDb = (rawDb * SMOOTHING_FACTOR) + (smoothedDb * (1 - SMOOTHING_FACTOR));
+
+            // 3. Apply Calibration Offset
+            const offset = parseFloat(offsetInput.value) || 0;
+            const finalDb = smoothedDb + offset;
+
+            // 4. Update DOM (Throttled)
+            if (currentTime - lastUpdateTime > UPDATE_INTERVAL) {
+                // If uncalibrated, clamp to -60 for cleanliness. If calibrated, show wider range.
+                const displayValue = offset === 0
+                    ? Math.max(-60, finalDb)
+                    : Math.max(-20, Math.min(140, finalDb));
+
+                dbDisplay.innerHTML = `${displayValue.toFixed(1)}<span class="unit">dB</span>`;
+                lastUpdateTime = currentTime;
+            }
+
+            animationId = requestAnimationFrame(updateLoop);
+        }
+    </script>
+</body>
+</html>
