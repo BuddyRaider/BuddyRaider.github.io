@@ -1,0 +1,130 @@
+.container {
+  overflow-x: scroll;
+  overflow-y: hidden;
+/*   width: 660px; */
+/*   height: 110px ; */
+  white-space: nowrap;
+  margin: 10px;
+}
+
+.keyboard {
+  width: auto;
+  padding: 0;
+  margin: 0;
+}
+
+.key {
+  cursor: pointer;
+  font:
+    16px "Open Sans",
+    "Lucida Grande",
+    "Arial",
+    sans-serif;
+  border: 1px solid black;
+  border-radius: 5px;
+  width: 20px;
+  height: 80px;
+  text-align: center;
+  box-shadow: 2px 2px darkgray;
+  display: inline-block;
+  position: relative;
+  margin-right: 3px;
+  user-select: none;
+  -moz-user-select: none;
+  -webkit-user-select: none;
+  -ms-user-select: none;
+}
+
+.key {
+  position: relative;
+  display: inline-block;
+  width: 30px;
+  height: 100px;
+  background: white;
+  border: 1px solid black;
+  margin-right: 2px;
+  z-index: 1;
+}
+
+.key[data-note*="#"] {
+  background: black;
+  color: white;
+  height: 60px;
+  width: 30px;
+  margin-left: -10px;
+  margin-right: -10px;
+  z-index: 2;
+  position: relative;
+  top: -30px;
+}
+
+.key div {
+  position: absolute;
+  bottom: 0;
+  text-align: center;
+  width: 100%;
+  pointer-events: none;
+}
+
+.key div sub {
+  font-size: 10px;
+  pointer-events: none;
+}
+
+.key:hover {
+  background-color: #eeeeff;
+}
+
+.key:active,
+.active {
+  background-color: gray;
+  color: black;
+}
+
+.octave {
+  display: inline-block;
+  padding-right: 6px;
+}
+
+.settingsBar {
+  padding-top: 8px;
+  font:
+    14px "Open Sans",
+    "Lucida Grande",
+    "Arial",
+    sans-serif;
+  position: relative;
+  vertical-align: middle;
+  width: 100%;
+  height: 30px;
+}
+
+.left {
+  width: 50%;
+  position: absolute;
+  left: 0;
+  display: table-cell;
+  vertical-align: middle;
+}
+
+.left span,
+.left input {
+  vertical-align: middle;
+}
+
+.right {
+  width: 50%;
+  position: absolute;
+  right: 0;
+  display: table-cell;
+  vertical-align: middle;
+}
+
+.right span {
+  vertical-align: middle;
+}
+
+.right input {
+  vertical-align: baseline;
+}
+
