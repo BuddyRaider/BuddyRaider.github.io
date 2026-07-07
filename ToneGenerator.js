@@ -68,7 +68,7 @@ function setup() {
   playSpecFreq.addEventListener("mouseup", () => {
     noteReleased(null, true);
   });
-  playSpecFreq.addEventListener("touchstart", () => {
+  playSpecFreq.addEventListener("touchend", () => {
     noteReleased(null, true);
   });
   playSpecFreq.addEventListener("keyup", () => {
