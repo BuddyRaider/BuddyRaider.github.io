@@ -54,6 +54,7 @@ function setup() {
     oscList[0]["specFreq"] = playTone(specFreq.value);
   });
   playSpecFreq.addEventListener("touchstart", () => {
+    alert("touching")
     noteReleased(null, true);
     oscList[0]["specFreq"] = playTone(specFreq.value);
   });
