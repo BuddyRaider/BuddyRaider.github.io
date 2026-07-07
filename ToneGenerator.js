@@ -53,7 +53,7 @@ function setup() {
     noteReleased(null, true);
     oscList[0]["specFreq"] = playTone(specFreq.value);
   });
-  playSpecFreq.addEventListener("touchstart", () => {
+  playSpecFreq.addEventListener("pointerstart", () => {
     noteReleased(null, true);
     oscList[0]["specFreq"] = playTone(specFreq.value);
   });
@@ -68,7 +68,7 @@ function setup() {
   playSpecFreq.addEventListener("mouseup", () => {
     noteReleased(null, true);
   });
-  playSpecFreq.addEventListener("touchend", () => {
+  playSpecFreq.addEventListener("pointerend", () => {
     noteReleased(null, true);
   });
   playSpecFreq.addEventListener("keyup", () => {
@@ -130,13 +130,10 @@ function createKey(note, octave, freq) {
   keyElement.addEventListener("mouseover", notePressed);
   keyElement.addEventListener("mouseleave", noteReleased);
 
-  keyElement.addEventListener("touchstart", (e) => {
-    alert("touching")
-      notePressed(e)
-  });
-  keyElement.addEventListener("touchend", noteReleased);
-  keyElement.addEventListener("touchmove", notePressed);
-  keyElement.addEventListener("touchcancel", noteReleased);
+  keyElement.addEventListener("pointerstart", notePressed);
+  keyElement.addEventListener("pointerend", noteReleased);
+  keyElement.addEventListener("pointermove", notePressed);
+  keyElement.addEventListener("pointercancel", noteReleased);
 
   return keyElement;
 }
