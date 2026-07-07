@@ -133,7 +133,7 @@ function createKey(note, octave, freq) {
   keyElement.addEventListener("pointerdown", notePressed);
   keyElement.addEventListener("pointerup", noteReleased);
   //keyElement.addEventListener("pointermove", notePressed);
-  //keyElement.addEventListener("pointercancel", noteReleased);
+  keyElement.addEventListener("pointerleave", noteReleased);
 
   return keyElement;
 }
