@@ -130,6 +130,11 @@ function createKey(note, octave, freq) {
   keyElement.addEventListener("mouseover", notePressed);
   keyElement.addEventListener("mouseleave", noteReleased);
 
+  keyElement.addEventListener("touchstart", notePressed);
+  keyElement.addEventListener("touchend", noteReleased);
+  keyElement.addEventListener("touchmove", notePressed);
+  keyElement.addEventListener("touchcancel", noteReleased);
+
   return keyElement;
 }
 function playTone(freq) {
