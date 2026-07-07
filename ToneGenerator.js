@@ -53,6 +53,10 @@ function setup() {
     noteReleased(null, true);
     oscList[0]["specFreq"] = playTone(specFreq.value);
   });
+  playSpecFreq.addEventListener("touchstart", () => {
+    noteReleased(null, true);
+    oscList[0]["specFreq"] = playTone(specFreq.value);
+  });
   playSpecFreq.addEventListener("keydown", () => {
     if (event.repeat) {
       return;
@@ -60,7 +64,11 @@ function setup() {
     noteReleased(null, true);
     oscList[0]["specFreq"] = playTone(specFreq.value);
   });
+  
   playSpecFreq.addEventListener("mouseup", () => {
+    noteReleased(null, true);
+  });
+  playSpecFreq.addEventListener("touchstart", () => {
     noteReleased(null, true);
   });
   playSpecFreq.addEventListener("keyup", () => {
