@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Metronome Generator 8000</title>
+    <style>
+        body {
+            background-color: #ffffff;
+            color: #000000;
+            font-family: sans-serif;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            user-select: none;
+        }
+
+        h1 { margin-bottom: 10px; font-size: 24px; }
+
+        .control-group {
+            margin: 15px 0;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        input[type="range"] {
+            width: 300px;
+            cursor: pointer;
+        }
+
+        select {
+            padding: 5px;
+            font-size: 16px;
+        }
+
+        .value-display {
+            font-size: 18px;
+            color: #555;
+        }
+
+        button {
+            padding: 15px 40px;
+            font-size: 20px;
+            cursor: pointer;
+            background-color: #000;
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+            margin-top: 20px;
+            transition: opacity 0.2s;
+        }
+
+        button:hover { opacity: 0.8; }
+        button:active { transform: scale(0.98); }
+
+        #status {
+            margin-top: 20px;
+            height: 20px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Web Audio Metronome</h1>
+
+    <div class="control-group">
+        <label for="tempo">Tempo (BPM)</label>
+        <input type="number" id="tempo" min="10" max="240" value="120">
+<!--         <input type="range" id="tempo" min="10" max="240" value="120"> -->
+<!--         <div class="value-display"><span id="tempo-val">120</span> BPM</div> -->
+    </div>
+
+    <div class="control-group">
+        <label for="frequency">Sound Frequency</label>
+        <input type="number" id="frequency" min="10" max="2000" value="200">
+<!--         <input type="range" id="frequency" min="10" max="2000" value="200"> -->
+<!--         <div class="value-display"><span id="freq-val">200</span> Hz</div> -->
+    </div>
+
+    <div class="control-group">
+        <label for="waveform">Waveform</label>
+        <select id="waveform">
+            <option value="sine">Sine (Smooth)</option>
+            <option value="square">Square (Retro)</option>
+            <option value="triangle">Triangle (Soft)</option>
+            <option value="sawtooth">Sawtooth (Sharp)</option>
+        </select>
+    </div>
+
+    <button id="toggle-btn">Start</button>
+    <div id="status"></div>
+
+    <script>
+        // State variables
+        let isPlaying = false;
+        let audioCtx = null;
+        let nextNoteTime = 0.0;
+        let timerID = null;
+        let lookahead = 25.0; // How frequently to call scheduling function (in milliseconds)
+        let scheduleAheadTime = 0.1; // How far ahead to schedule audio (in seconds)
+
+        // DOM Elements
+        const tempoInput = document.getElementById('tempo');
+        const tempoVal = document.getElementById('tempo-val');
+        const freqInput = document.getElementById('frequency');
+        const freqVal = document.getElementById('freq-val');
+        const waveformSelect = document.getElementById('waveform');
+        const toggleBtn = document.getElementById('toggle-btn');
+        const statusDiv = document.getElementById('status');
+
+        // Update UI displays
+        tempoInput.addEventListener('input', () => tempoVal.textContent = tempoInput.value);
+        freqInput.addEventListener('input', () => freqVal.textContent = freqInput.value);
+
+        // Audio Synthesis Function
+        function playSound(time) {
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+
+            osc.type = waveformSelect.value;
+            osc.frequency.value = freqInput.value;
+
+            // Connect graph
+            osc.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            // Envelope to prevent clicking (short decay)
+            gainNode.gain.setValueAtTime(1, time);
+            gainNode.gain.exponentialRampToValueAtTime(0.001, time + 0.05);
+
+            osc.start(time);
+            osc.stop(time + 0.05);
+        }
+
+        // Scheduler Logic
+        function nextNote() {
+            const secondsPerBeat = 60.0 / tempoInput.value;
+            nextNoteTime += secondsPerBeat;
+        }
+
+        function scheduleNote(beatNumber, time) {
+            // Push the note on the audio stack
+            playSound(time);
+
+            // Visual update (drawn asynchronously to avoid blocking audio thread)
+            requestAnimationFrame(() => {
+                statusDiv.textContent = "Tick";
+                setTimeout(() => statusDiv.textContent = "", 100);
+            });
+        }
+
+        function scheduler() {
+            // While there are notes that will need to play before the next interval,
+            // schedule them and advance the pointer.
+            while (nextNoteTime < audioCtx.currentTime + scheduleAheadTime) {
+                scheduleNote(0, nextNoteTime);
+                nextNote();
+            }
+            timerID = window.setTimeout(scheduler, lookahead);
+        }
+
+        // Toggle Play/Stop
+        toggleBtn.addEventListener('click', () => {
+            if (isPlaying) {
+                // Stop
+                window.clearTimeout(timerID);
+                isPlaying = false;
+                toggleBtn.textContent = "Start";
+                statusDiv.textContent = "Stopped";
+            } else {
+                // Start
+                // AudioContext must be created/resumed after a user gesture
+                if (!audioCtx) {
+                    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                if (audioCtx.state === 'suspended') {
+                    audioCtx.resume();
+                }
+
+                isPlaying = true;
+                nextNoteTime = audioCtx.currentTime + 0.05;
+                scheduler();
+                toggleBtn.textContent = "Stop";
+                statusDiv.textContent = "Playing";
+            }
+        });
+    </script>
+</body>
+</html>
