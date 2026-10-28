@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Spectrogram</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #111;
+            color: #eee;
+            font-family: system-ui, sans-serif;
+            overflow: hidden;
+        }
+        #ui {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            z-index: 10;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        button {
+            padding: 0.4rem 1rem;
+            font-size: 0.9rem;
+            cursor: pointer;
+            background: #333;
+            color: #eee;
+            border: 1px solid #555;
+            border-radius: 4px;
+        }
+        button:hover { background: #444; }
+        #tooltip {
+            position: fixed;
+            pointer-events: none;
+            background: rgba(0,0,0,0.85);
+            color: #fff;
+            padding: 6px 10px;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            display: none;
+            z-index: 20;
+            white-space: nowrap;
+        }
+        #pitchPanel {
+            position: fixed;
+            bottom: 10px;
+            left: 10px;
+            z-index: 10;
+            background: rgba(0,0,0,0.7);
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            min-width: 200px;
+        }
+        #pitchPanel h3 { font-size: 0.8rem; color: #888; margin-bottom: 4px; }
+        .pitch-item { color: #0f0; font-family: monospace; }
+        canvas { display: block; }
+        .hint {
+            position: fixed;
+            bottom: 10px;
+            right: 10px;
+            font-size: 0.8rem;
+            color: #666;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+    <div id="ui">
+        <button id="startBtn">Start Microphone</button>
+    </div>
+    <canvas id="spectrogram"></canvas>
+    <div id="tooltip"></div>
+    <div id="pitchPanel">
+        <h3>Detected Pitches</h3>
+        <div id="pitchList"><span style="color:#666">—</span></div>
+    </div>
+    <p class="hint">Hover/touch to inspect. Log scale: 16 Hz – 16 kHz</p>
+
+    <script>
+    const canvas = document.getElementById('spectrogram');
+    const ctx = canvas.getContext('2d');
+    const tooltip = document.getElementById('tooltip');
+    const pitchList = document.getElementById('pitchList');
+
+    // --- Frequency range (log scale) ---
+    const MIN_FREQ = 8;
+    const MAX_FREQ = 16000;
+    const FFT_SIZE = 32768;  // ← 4× bigger: ~1.46 Hz/bin at 48 kHz
+
+    let W, H;
+    function resize() {
+        W = canvas.width = window.innerWidth;
+        H = canvas.height = window.innerHeight;
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, W, H);
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    let audioCtx, analyser, dataArray, running = false, sampleRate = 48000;
+
+    document.getElementById('startBtn').addEventListener('click', async () => {
+        if (running) return;
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            audioCtx = new AudioContext();
+            sampleRate = audioCtx.sampleRate;
+            const source = audioCtx.createMediaStreamSource(stream);
+            analyser = audioCtx.createAnalyser();
+            analyser.fftSize = FFT_SIZE;
+            analyser.smoothingTimeConstant = 0;
+            source.connect(analyser);
+            const binCount = analyser.frequencyBinCount;
+            dataArray = new Uint8Array(binCount);
+            running = true;
+            document.getElementById('startBtn').textContent = 'Running…';
+            draw();
+        } catch (err) {
+            alert('Microphone error: ' + err.message);
+        }
+    });
+
+    // --- Log-frequency mapping ---
+    function yToFreq(y) {
+        const t = 1 - y / (H - 1);
+        return MIN_FREQ * Math.pow(MAX_FREQ / MIN_FREQ, t);
+    }
+    function freqToBin(freq) {
+        return freq * FFT_SIZE / sampleRate;
+    }
+    function binToFreq(bin) {
+        return bin * sampleRate / FFT_SIZE;
+    }
+
+    // --- Note name helpers ---
+    const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+    function freqToNote(freq) {
+        if (freq < 1) return '—';
+        const midi = Math.round(12 * Math.log2(freq / 440) + 69);
+        const name = NOTE_NAMES[((midi % 12) + 12) % 12];
+        const octave = Math.floor(midi / 12) - 1;
+        return `${name}${octave}`;
+    }
+
+    // --- Color map ---
+    function colorFor(value) {
+        const t = value / 255;
+        let r, g, b;
+        if (t < 0.2) {
+            r = 0; g = 0; b = Math.floor(t / 0.2 * 255);
+        } else if (t < 0.4) {
+            r = 0; g = Math.floor((t - 0.2) / 0.2 * 255); b = 255;
+        } else if (t < 0.6) {
+            r = 0; g = 255; b = Math.floor((1 - (t - 0.4) / 0.2) * 255);
+        } else if (t < 0.8) {
+            r = Math.floor((t - 0.6) / 0.2 * 255); g = 255; b = 0;
+        } else if (t < 0.95) {
+            r = 255; g = Math.floor((1 - (t - 0.8) / 0.15) * 255); b = 0;
+        } else {
+            r = 255; g = 255; b = Math.floor((t - 0.95) / 0.05 * 255);
+        }
+        return [r, g, b];
+    }
+
+    // --- Interpolated bin lookup (the key fix) ---
+    // Returns the amplitude at a fractional bin position via linear interpolation
+    function interpolatedBin(freq) {
+        const exactBin = freq * FFT_SIZE / sampleRate;
+        const bin0 = Math.floor(exactBin);
+        const bin1 = Math.min(bin0 + 1, dataArray.length - 1);
+        const frac = exactBin - bin0;
+        if (bin0 < 0) return dataArray[0];
+        if (bin0 >= dataArray.length - 1) return dataArray[dataArray.length - 1];
+        return dataArray[bin0] * (1 - frac) + dataArray[bin1] * frac;
+    }
+
+    // Make MIN_SEP_HZ proportional to frequency (semitone-based)
+    function minSepHz(freq) {
+        return freq * 0.06; // ~1 semitone at that pitch
+    }
+
+    // Lower threshold for low frequencies
+    function thresholdForFreq(freq) {
+        if (freq < 50) return 40;
+        if (freq < 100) return 70;
+        return 120;
+    }
+
+    // --- Multi-pitch detection (peak picking) ---
+    function detectPitches() {
+        if (!dataArray) return [];
+        const binCount = dataArray.length;
+        const minBin = Math.max(1, Math.floor(freqToBin(MIN_FREQ)));
+        const maxBin = Math.min(binCount - 1, Math.floor(freqToBin(MAX_FREQ)));
+        const pitches = [];
+        //const THRESHOLD = 120;
+        //const MIN_SEP_HZ = 30;
+        const WINDOW = 5;
+
+        for (let i = minBin + WINDOW; i < maxBin - WINDOW; i++) {
+            const val = dataArray[i];
+            const freq = binToFreq(i);
+            if (val < thresholdForFreq(freq)) continue;
+            let isMax = true;
+            for (let d = 1; d <= WINDOW; d++) {
+                if (dataArray[i + d] >= val || dataArray[i - d] >= val) {
+                    isMax = false; break;
+                }
+            }
+            if (!isMax) continue;
+            let tooClose = false;
+            for (const p of pitches) {
+                if (Math.abs(p.freq - freq) < minSepHz(freq)) { tooClose = true; break; }
+            }
+            if (tooClose) continue;
+            pitches.push({ freq, amplitude: val, note: freqToNote(freq) });
+        }
+        //pitches.sort((a, b) => b.amplitude - a.amplitude);
+        pitches.sort((a, b) => b.freq - a.freq).reverse();
+        return pitches.slice(0, 5).reverse();
+    }
+
+    function detectFundamental() {
+        if (!dataArray) return null;
+        const binCount = dataArray.length;
+        const minBin = Math.max(1, Math.floor(freqToBin(MIN_FREQ)));
+        const maxBin = Math.min(binCount - 1, Math.floor(freqToBin(MAX_FREQ)));
+        const WINDOW = 5;
+
+        // Collect all local maxima first
+        const peaks = [];
+        for (let i = minBin + WINDOW; i < maxBin - WINDOW; i++) {
+            const val = dataArray[i];
+            const freq = binToFreq(i);
+            if (val < thresholdForFreq(freq)) continue;
+
+            let isMax = true;
+            for (let d = 1; d <= WINDOW; d++) {
+                if (dataArray[i + d] >= val || dataArray[i - d] >= val) {
+                    isMax = false; break;
+                }
+            }
+            if (isMax) peaks.push({ freq, amplitude: val });
+        }
+
+        if (peaks.length === 0) return null;
+
+        // Score each candidate: how many of its harmonics (2f, 3f, ... 8f)
+        // are also present as peaks?
+        function scoreCandidate(candidate) {
+            let score = candidate.amplitude; // base score = own amplitude
+            for (let h = 2; h <= 8; h++) {
+                const harmFreq = candidate.freq * h;
+                if (harmFreq > MAX_FREQ) break;
+                // Check if there's a peak near this harmonic frequency
+                const harmBin = Math.floor(harmFreq * FFT_SIZE / sampleRate);
+                if (harmBin < 0 || harmBin >= binCount) continue;
+                // Look in a small window around the expected harmonic bin
+                let maxNearby = 0;
+                for (let d = -2; d <= 2; d++) {
+                    const b = harmBin + d;
+                    if (b >= 0 && b < binCount) maxNearby = Math.max(maxNearby, dataArray[b]);
+                }
+                if (maxNearby > 60) {
+                    score += maxNearby / h; // harmonic evidence, weighted down by order
+                }
+            }
+            return score;
+        }
+
+        // Pick the best-scoring candidate
+        let best = null;
+        let bestScore = -1;
+        for (const p of peaks) {
+            const s = scoreCandidate(p);
+            if (s > bestScore) {
+                bestScore = s;
+                best = p;
+            }
+        }
+
+        if (!best) return null;
+        return {
+            freq: best.freq,
+            amplitude: best.amplitude,
+            note: freqToNote(best.freq),
+            score: bestScore
+        };
+    }
+
+    // --- Draw loop ---
+    function draw() {
+        if (!running) return;
+        requestAnimationFrame(draw);
+
+        analyser.getByteFrequencyData(dataArray);
+
+        // Shift left by 1 px
+        const imageData = ctx.getImageData(1, 0, W - 1, H);
+        ctx.putImageData(imageData, 0, 0);
+
+        // Draw new column on right edge
+        const col = W - 1;
+        const imgData = ctx.getImageData(col, 0, 1, H);
+        const data = imgData.data;
+
+        for (let y = 0; y < H; y++) {
+            const freq = yToFreq(y);
+            const val = interpolatedBin(freq);  // ← smooth, not blocky
+            const [r, g, b] = colorFor(val);
+            const idx = y * 4;
+            data[idx] = r;
+            data[idx + 1] = g;
+            data[idx + 2] = b;
+            data[idx + 3] = 255;
+        }
+        ctx.putImageData(imgData, col, 0);
+
+        drawGrid();
+        updatePitches();
+    }
+
+    function drawGrid() {
+        ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+        ctx.fillStyle = 'rgba(255,255,255,0.4)';
+        ctx.font = '10px monospace';
+        ctx.lineWidth = 1;
+        for (let octave = -1; octave <= 10; octave++) {
+            const freq = 440 * Math.pow(2, (octave * 12 + 9 - 69) / 12);
+            if (freq < MIN_FREQ || freq > MAX_FREQ) continue;
+            const y = H - 1 - (Math.log(freq / MIN_FREQ) / Math.log(MAX_FREQ / MIN_FREQ)) * (H - 1);
+            ctx.beginPath();
+            ctx.moveTo(0, y);
+            ctx.lineTo(W, y);
+            ctx.stroke();
+            ctx.fillText(`C${octave}`, 4, y - 3);
+        }
+    }
+
+    // function updatePitches() {
+    //     const pitches = detectPitches();
+    //     if (pitches.length === 0) {
+    //         pitchList.innerHTML = '<span style="color:#666">—</span>';
+    //     } else {
+    //         pitchList.innerHTML = pitches.map(p =>
+    //             `<div class="pitch-item">${p.note} &nbsp;${p.freq.toFixed(1)} Hz &nbsp;(${p.amplitude}/255)</div>`
+    //         ).join('');
+    //     }
+    // }
+
+    function updatePitches() {
+        const f = detectFundamental();
+        if (!f) {
+            pitchList.innerHTML = '<span style="color:#666">—</span>';
+        } else {
+            pitchList.innerHTML =
+                `<div class="pitch-item" style="font-size:1.1rem">${f.note} &nbsp; ${f.freq.toFixed(1)} Hz</div>`;
+        }
+    }
+
+    // --- Tooltip ---
+    function showTooltip(x, y) {
+        if (y < 0 || y >= H) { tooltip.style.display = 'none'; return; }
+        const freq = yToFreq(y);
+        const note = freqToNote(freq);
+        tooltip.style.display = 'block';
+        tooltip.style.left = (x + 14) + 'px';
+        tooltip.style.top = (y - 10) + 'px';
+        tooltip.textContent = `${freq < 100 ? freq.toFixed(1) : Math.round(freq)} Hz  ·  ${note}`;
+    }
+    function hideTooltip() { tooltip.style.display = 'none'; }
+
+    canvas.addEventListener('mousemove', e => showTooltip(e.clientX, e.clientY));
+    canvas.addEventListener('mouseleave', hideTooltip);
+    canvas.addEventListener('touchstart', e => {
+        e.preventDefault();
+        showTooltip(e.touches[0].clientX, e.touches[0].clientY);
+    }, { passive: false });
+    canvas.addEventListener('touchmove', e => {
+        e.preventDefault();
+        showTooltip(e.touches[0].clientX, e.touches[0].clientY);
+    }, { passive: false });
+    canvas.addEventListener('touchend', hideTooltip);
+    </script>
+</body>
+</html>
